@@ -1,0 +1,150 @@
+---
+title: 'Environment Variables'
+description: 'Configure marco-code using environment variables for API access and customization'
+---
+
+Environment variables are used to configure marco-code's connection to the OpenRouter API. These settings control how marco-code authenticates and communicates with the LLM backend.
+
+## Required Variables
+
+<ParamField path="OPENROUTER_API_KEY" type="string" required>
+  Your OpenRouter API key for authenticating requests to the LLM service.
+  
+  **How to get an API key:**
+  1. Visit [OpenRouter.ai](https://openrouter.ai/)
+  2. Sign up or log in to your account
+  3. Navigate to the API Keys section
+  4. Generate a new API key
+  5. Copy the key for use in your configuration
+  
+  <Warning>
+    marco-code will fail to start without this key. You'll see the error:
+    ```
+    RuntimeError: OPENROUTER_API_KEY is not set
+    ```
+  </Warning>
+</ParamField>
+
+## Optional Variables
+
+<ParamField path="OPENROUTER_BASE_URL" type="string" default="https://openrouter.ai/api/v1">
+  The base URL for the OpenRouter API endpoint. This uses the OpenAI-compatible API format.
+  
+  **When to override:**
+  - Using a proxy or custom gateway
+  - Testing against a local mock server
+  - Using an alternative OpenRouter endpoint
+  
+  If not set, marco-code defaults to `https://openrouter.ai/api/v1`.
+</ParamField>
+
+## Setup Methods
+
+<Steps>
+  <Step title="Create a .env file">
+    The recommended approach is to create a `.env` file in your project directory. marco-code automatically loads this file using python-dotenv.
+    
+    Create a file named `.env` in the same directory where you run marco-code:
+    
+    ```bash .env
+    OPENROUTER_API_KEY=your-key-here
+    OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+    ```
+    
+    <Note>
+      The `.env.example` file in the repository provides a template you can copy:
+      ```bash
+      cp .env.example .env
+      ```
+      Then edit `.env` with your actual API key.
+    </Note>
+  </Step>
+  
+  <Step title="Alternative: Export inline">
+    For quick testing or CI/CD environments, you can export variables directly in your shell session:
+    
+    ```bash
+    export OPENROUTER_API_KEY=your-key-here
+    export OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+    
+    python marco_code.py -p "your prompt"
+    ```
+    
+    Or set them inline for a single command:
+    
+    ```bash
+    OPENROUTER_API_KEY=your-key-here python marco_code.py -p "your prompt"
+    ```
+  </Step>
+  
+  <Step title="Verify configuration">
+    To verify your configuration is working, try running marco-code with a simple prompt:
+    
+    ```bash
+    python marco_code.py -p "Print hello world"
+    ```
+    
+    If configured correctly, marco-code will connect to OpenRouter and respond to your prompt. If the API key is missing, you'll see:
+    
+    ```
+    RuntimeError: OPENROUTER_API_KEY is not set
+    ```
+  </Step>
+</Steps>
+
+## Security Best Practices
+
+<Warning>
+  **Never commit your `.env` file or API keys to version control!**
+</Warning>
+
+Follow these security guidelines:
+
+1. **Add .env to .gitignore**
+   ```bash .gitignore
+   .env
+   ```
+   The marco-code repository includes this by default, but verify it's present in your `.gitignore` file.
+
+2. **Use .env.example for templates**
+   - Commit `.env.example` with placeholder values
+   - Never include actual API keys in `.env.example`
+   - Team members can copy `.env.example` to `.env` and fill in their own keys
+
+3. **Rotate keys if exposed**
+   If you accidentally commit or expose your API key:
+   - Immediately revoke the key in your OpenRouter dashboard
+   - Generate a new key
+   - Update your `.env` file with the new key
+
+4. **Use different keys for different environments**
+   - Development: Personal API key in local `.env`
+   - CI/CD: Environment secrets in your CI provider
+   - Production: Secure secret management system
+
+## How Environment Variables Are Used
+
+marco-code loads environment variables at startup (line 42 in `marco_code.py`):
+
+```python
+load_dotenv()
+
+# Configuration for OpenRouter API (OpenAI-compatible endpoint)
+API_KEY = os.getenv("OPENROUTER_API_KEY")
+BASE_URL = os.getenv("OPENROUTER_BASE_URL", default="https://openrouter.ai/api/v1")
+```
+
+The OpenAI client is initialized lazily on first use (lines 55-62):
+
+```python
+def _get_client():
+    """Return the shared OpenAI client, creating it on first use."""
+    global _client
+    if _client is None:
+        if not API_KEY:
+            raise RuntimeError("OPENROUTER_API_KEY is not set")
+        _client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+    return _client
+```
+
+This means the API key is validated only when you first make a request to the LLM, not at import time.

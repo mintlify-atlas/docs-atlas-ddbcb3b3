@@ -1,0 +1,374 @@
+---
+title: 'main'
+description: 'The agent loop implementation'
+---
+
+## Overview
+
+The `main` function implements the core "agent loop" pattern used by AI coding assistants. It repeatedly calls the LLM until the task is complete, executing tool calls along the way.
+
+## Function Signature
+
+Defined in `marco_code.py:196-265`:
+
+```python
+def main():
+    p = argparse.ArgumentParser(
+        prog="marco-code",
+        description="A minimal LLM-powered coding assistant",
+    )
+    p.add_argument("-p", required=True, help="The prompt to send to the assistant")
+    args = p.parse_args()
+
+    # Initialize conversation with system context and user's prompt
+    messages = [
+        {"role": "system", "content": _build_system_prompt()},
+        {"role": "user", "content": args.p},
+    ]
+
+    # Agent loop implementation...
+```
+
+## Agent Loop Pattern
+
+The agent loop is the core pattern (`marco_code.py:210-216`):
+
+```python
+# ==========================================================================
+# AGENT LOOP
+# This is the core pattern: repeatedly call the LLM until it stops.
+# Each iteration, the LLM either:
+#   1. Calls one or more tools (we execute them and continue)
+#   2. Responds with text and finish_reason="stop" (we exit the loop)
+# ==========================================================================
+```
+
+### Data Flow
+
+From the module docstring (`marco_code.py:8-29`):
+
+```
+Agent loop data flow:
+
+    User prompt (-p)
+           │
+           ▼
+    ┌─────────────┐
+    │  messages[]  │◄──────────────────────────────┐
+    │  (history)   │                               │
+    └──────┬──────┘                               │
+           │                                       │
+           ▼                                       │
+    ┌─────────────┐    finish_reason="stop"       │
+    │ call_model() ├──────────────────────► print() & exit
+    │  (OpenRouter)│                               │
+    └──────┬──────┘                               │
+           │ tool_calls?                           │
+           ▼                                       │
+    ┌─────────────┐    result string              │
+    │ TOOLS[name] ├───────────────────────────────┘
+    │ read/write/ │
+    │ bash        │
+    └─────────────┘
+```
+
+## Implementation Details
+
+### Loop Execution
+
+The loop runs for up to `MAX_ITERATIONS` (`marco_code.py:217-252`):
+
+```python
+for _iteration in range(MAX_ITERATIONS):
+    chat = call_model(messages, TOOL_DEFINITIONS)
+
+    if not chat.choices or len(chat.choices) == 0:
+        raise RuntimeError("No choices in response")
+
+    message = chat.choices[0].message
+    messages.append(message)
+
+    # If the LLM requested tool calls, execute them
+    if message.tool_calls:
+        for tool_call in message.tool_calls:
+            fn = tool_call.function
+
+            try:
+                fn_args = json.loads(fn.arguments)
+                print(f"  [tool] {fn.name}({fn_args})", file=sys.stderr)
+                result = TOOLS[fn.name](**fn_args)
+            except (KeyError, json.JSONDecodeError, TypeError) as e:
+                result = f"Error: {type(e).__name__}: {e}"
+            except subprocess.TimeoutExpired as e:
+                result = f"Error: command timed out after {BASH_TIMEOUT}s"
+            except Exception as e:
+                result = f"Error executing {fn.name}: {e}"
+
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result,
+                }
+            )
+
+    # Exit loop when the LLM is done (no more tool calls)
+    if chat.choices[0].finish_reason == "stop":
+        break
+```
+
+### Error Handling
+
+The loop catches and gracefully handles various exceptions (`marco_code.py:231-240`):
+
+- `KeyError`: Tool not found in `TOOLS` dict
+- `json.JSONDecodeError`: Invalid JSON in tool arguments
+- `TypeError`: Wrong argument types
+- `subprocess.TimeoutExpired`: Bash command timeout
+- `Exception`: All other errors
+
+Errors are converted to strings and returned to the LLM as tool results, allowing it to recover or inform the user.
+
+### Maximum Iterations Warning
+
+If the loop exhausts all iterations (`marco_code.py:253-257`):
+
+```python
+else:
+    print(
+        f"Warning: reached maximum iterations ({MAX_ITERATIONS})",
+        file=sys.stderr,
+    )
+```
+
+### Final Output
+
+The final response is printed to stdout (`marco_code.py:259-264`):
+
+```python
+final_content = chat.choices[0].message.content
+if final_content:
+    print(final_content)
+else:
+    print("Stopped: reached maximum iterations without a final response.")
+```
+
+## Using as a Library
+
+### Programmatic Usage
+
+You can use `main()` programmatically by manipulating `sys.argv`:
+
+```python
+import sys
+from marco_code import main
+
+# Simulate CLI arguments
+sys.argv = ["marco-code", "-p", "Read README.md and summarize it"]
+
+main()  # Runs the agent loop
+```
+
+### Building a Custom Agent Loop
+
+For more control, build your own loop using `call_model`:
+
+```python
+import json
+from marco_code import call_model, TOOL_DEFINITIONS, TOOLS, _build_system_prompt
+
+def custom_agent(prompt: str, max_iterations: int = 5):
+    """Custom agent loop with different configuration."""
+    messages = [
+        {"role": "system", "content": _build_system_prompt()},
+        {"role": "user", "content": prompt},
+    ]
+    
+    for iteration in range(max_iterations):
+        print(f"Iteration {iteration + 1}/{max_iterations}")
+        
+        response = call_model(messages, TOOL_DEFINITIONS)
+        message = response.choices[0].message
+        messages.append(message)
+        
+        # Execute tool calls
+        if message.tool_calls:
+            for tool_call in message.tool_calls:
+                fn = tool_call.function
+                fn_args = json.loads(fn.arguments)
+                
+                print(f"Calling: {fn.name}({fn_args})")
+                result = TOOLS[fn.name](**fn_args)
+                
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result
+                })
+        
+        # Check if done
+        if response.choices[0].finish_reason == "stop":
+            return message.content
+    
+    return "Max iterations reached"
+
+# Usage
+result = custom_agent("Count lines in *.py files")
+print(result)
+```
+
+### Adding Custom Tools
+
+```python
+import json
+from marco_code import call_model, TOOL_DEFINITIONS, TOOLS
+
+# Define a custom tool
+def search_web(query: str) -> str:
+    """Search the web (mock implementation)."""
+    return f"Search results for: {query}"
+
+# Add to tools
+TOOLS["search_web"] = search_web
+
+# Add tool definition
+custom_tools = TOOL_DEFINITIONS + [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_web",
+            "description": "Search the web for information",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    }
+]
+
+# Use custom tools
+messages = [
+    {"role": "user", "content": "Search for Python best practices"}
+]
+
+response = call_model(messages, custom_tools)
+```
+
+### Intercepting Tool Calls
+
+```python
+import json
+from marco_code import call_model, TOOL_DEFINITIONS, TOOLS
+
+def agent_with_logging(prompt: str):
+    """Agent that logs all tool calls to a file."""
+    messages = [
+        {"role": "user", "content": prompt}
+    ]
+    
+    tool_log = []
+    
+    for _ in range(10):
+        response = call_model(messages, TOOL_DEFINITIONS)
+        message = response.choices[0].message
+        messages.append(message)
+        
+        if message.tool_calls:
+            for tool_call in message.tool_calls:
+                fn = tool_call.function
+                fn_args = json.loads(fn.arguments)
+                
+                # Log the call
+                tool_log.append({
+                    "tool": fn.name,
+                    "args": fn_args,
+                })
+                
+                # Execute
+                result = TOOLS[fn.name](**fn_args)
+                
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result
+                })
+        
+        if response.choices[0].finish_reason == "stop":
+            break
+    
+    # Save log
+    with open("tool_calls.json", "w") as f:
+        json.dump(tool_log, f, indent=2)
+    
+    return message.content
+```
+
+## Message Structure
+
+The `messages` list grows throughout the conversation:
+
+```python
+[
+    # Initial system prompt
+    {"role": "system", "content": "You are marco-code..."},
+    
+    # User's request
+    {"role": "user", "content": "Read config.json"},
+    
+    # LLM's tool call
+    {
+        "role": "assistant",
+        "tool_calls": [{"function": {"name": "read", ...}}]
+    },
+    
+    # Tool result
+    {
+        "role": "tool",
+        "tool_call_id": "call_123",
+        "content": "{...json content...}"
+    },
+    
+    # LLM's final response
+    {
+        "role": "assistant",
+        "content": "The config file contains..."
+    }
+]
+```
+
+## Configuration
+
+### System Prompt
+
+The system prompt is built by `_build_system_prompt()` (`marco_code.py:185-193`):
+
+```python
+def _build_system_prompt():
+    """Build a system prompt with working directory context."""
+    return (
+        "You are marco-code, a minimal coding assistant. "
+        "You help users with software engineering tasks by reading files, "
+        "writing files, and executing shell commands.\n\n"
+        f"Working directory: {os.getcwd()}\n"
+        f"Platform: {platform.system()} {platform.release()}\n"
+    )
+```
+
+### Constants
+
+```python
+MAX_ITERATIONS = 10  # Maximum loop iterations
+BASH_TIMEOUT = 30    # Bash command timeout (seconds)
+```
+
+## See Also
+
+- [call_model](/api/python/call-model) - Low-level API for calling the LLM
+- [CLI](/api/cli) - Command-line interface
+- [Agent Loop](/concepts/agent-loop) - Detailed explanation of the pattern

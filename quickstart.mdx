@@ -1,80 +1,254 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Run your first coding task with marco-code in under 5 minutes
 ---
 
-## Get started in three steps
+## Your First Command
 
-Get your documentation site running locally and make your first customization.
+Let's get you from zero to running your first AI-powered coding task. This guide assumes you've already [installed marco-code](/installation) and configured your API key.
 
-### Step 1: Set up your local environment
+<Steps>
+  <Step title="Verify your setup">
+    First, make sure marco-code is working:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```bash
+    marco-code --help
+    ```
 
-### Step 2: Deploy your changes
+    You should see the help message showing the `-p` option for prompts.
+  </Step>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+  <Step title="Run a simple command">
+    Let's start with a basic task—creating a Python script:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    ```bash
+    marco-code -p "Create a hello.py file that prints 'Hello, World!' in different languages"
+    ```
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    **What happens:**
+    - marco-code sends your prompt to the LLM
+    - The LLM decides to use the `write` tool
+    - marco-code creates the file with generated content
+    - The LLM responds confirming the task is complete
 
-### Step 3: Go live
+    **Expected output:**
+    ```
+      [tool] write({'file_path': 'hello.py', 'content': '...'})
+    I've created hello.py with greetings in multiple languages.
+    ```
+  </Step>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+  <Step title="Verify the result">
+    Check that the file was created:
 
-## Next steps
+    ```bash
+    cat hello.py
+    ```
 
-Now that you have your docs running, explore these key features:
+    Run the generated script:
 
-<CardGroup cols={2}>
+    ```bash
+    python hello.py
+    ```
+  </Step>
+</Steps>
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+## Understanding the Output
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+When marco-code runs, you'll see two types of output:
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+**Tool calls** (stderr):
+```
+  [tool] write({'file_path': 'hello.py', 'content': '...'})
+```
+These show what tools the LLM is calling to complete your task.
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+**Final response** (stdout):
+```
+I've created hello.py with greetings in multiple languages.
+```
+This is the LLM's natural language response to your prompt.
 
-</CardGroup>
+<Tip>
+You can redirect tool output to hide it: `marco-code -p "..." 2>/dev/null`
+</Tip>
+
+## Common Use Cases
+
+Now that you've run your first command, try these practical examples:
+
+### Reading and Analyzing Files
+
+```bash
+marco-code -p "Read hello.py and tell me what it does"
+```
+
+The LLM will use the `read` tool to examine the file and explain its functionality.
+
+### Writing and Modifying Code
+
+```bash
+marco-code -p "Add a function to hello.py that takes a language code and returns the greeting"
+```
+
+The LLM will:
+1. Read the current file
+2. Modify it to add the new function
+3. Write the updated content back
+
+### Running Commands
+
+```bash
+marco-code -p "List all Python files in the current directory and count the lines in each"
+```
+
+The LLM will use the `bash` tool to execute shell commands and report results.
+
+### Multi-Step Tasks
+
+```bash
+marco-code -p "Create a tests directory, write a unit test for hello.py, and run it with pytest"
+```
+
+The LLM will:
+1. Create the directory using bash (`mkdir`)
+2. Write a test file
+3. Execute pytest
+4. Report the results
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+marco-code has a maximum of 10 iterations and a 30-second timeout for bash commands. This prevents infinite loops and runaway processes.
 </Note>
+
+## Complete Example Workflow
+
+Let's build a complete mini-project:
+
+<Steps>
+  <Step title="Create a project structure">
+    ```bash
+    marco-code -p "Create a directory called calculator with __init__.py, calc.py with add/subtract/multiply/divide functions, and requirements.txt"
+    ```
+  </Step>
+
+  <Step title="Add tests">
+    ```bash
+    marco-code -p "Create calculator/test_calc.py with pytest tests for all calculator functions"
+    ```
+  </Step>
+
+  <Step title="Run the tests">
+    ```bash
+    marco-code -p "Install pytest if needed and run the tests in calculator/"
+    ```
+  </Step>
+
+  <Step title="Generate documentation">
+    ```bash
+    marco-code -p "Read the calculator code and create a README.md with usage examples"
+    ```
+  </Step>
+</Steps>
+
+**Result:** You've just built a complete Python package with tests and documentation using natural language prompts!
+
+## Environment Configuration
+
+marco-code loads configuration from a `.env` file. Here's the template from the repository:
+
+```bash
+OPENROUTER_API_KEY=your-key-here
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+```
+
+<Accordion title="Advanced: Using Different Models">
+  marco-code uses `anthropic/claude-haiku-4.5` by default (see `marco_code.py:78`). To use a different model, you'll need to modify the source code:
+
+  ```python
+  # In marco_code.py, line 78
+  response = client.chat.completions.create(
+      model="anthropic/claude-haiku-4.5",  # Change this
+      messages=messages,
+      tools=tools,
+  )
+  ```
+
+  Popular alternatives:
+  - `anthropic/claude-sonnet-4.5` - More capable, higher quality
+  - `openai/gpt-4-turbo` - OpenAI's latest
+  - `google/gemini-pro` - Google's model
+
+  Check [OpenRouter's model list](https://openrouter.ai/models) for all available options.
+</Accordion>
+
+## Tips for Writing Effective Prompts
+
+<CardGroup cols={2}>
+  <Card title="Be Specific" icon="bullseye">
+    Instead of "make a web server", try "create a Flask app with a /health endpoint that returns JSON"
+  </Card>
+  
+  <Card title="Break Down Complex Tasks" icon="list-check">
+    For large tasks, run multiple commands to maintain control and verify each step
+  </Card>
+  
+  <Card title="Specify File Paths" icon="folder">
+    Use absolute or relative paths to avoid ambiguity: "create src/models/user.py"
+  </Card>
+  
+  <Card title="Include Context" icon="circle-info">
+    Reference existing files: "read config.json and update the database host to localhost"
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### No Response
+
+If marco-code hangs or times out:
+
+```bash
+# Check your API key is set
+echo $OPENROUTER_API_KEY
+
+# Or check .env file
+cat .env
+```
+
+### Tool Errors
+
+If you see `[tool] ... Error: ...` messages:
+
+- **FileNotFoundError**: The file doesn't exist—check the path
+- **PermissionError**: You don't have write access—check directory permissions
+- **Command timed out**: Bash command took >30s—simplify the task
+
+### Unexpected Behavior
+
+The LLM might misinterpret your prompt. Try:
+
+1. **Being more explicit**: "Create a new file" instead of "add a file"
+2. **Adding constraints**: "Don't delete any existing files"
+3. **Showing examples**: "Create a function like this: def add(a, b): return a + b"
+
+## What's Next?
+
+Now that you've run your first tasks, explore how marco-code works:
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="book" href="/concepts/agent-loop">
+    Learn about the agent loop, tools, and message history
+  </Card>
+  
+  <Card title="Tool Reference" icon="wrench" href="/api/tools/read">
+    Detailed documentation for read, write, and bash tools
+  </Card>
+  
+  <Card title="Examples" icon="code" href="/examples/basic-usage">
+    More complex examples and real-world use cases
+  </Card>
+  
+  <Card title="Python API" icon="puzzle-piece" href="/api/python/main">
+    Use marco-code programmatically and customize behavior
+  </Card>
+</CardGroup>

@@ -1,0 +1,110 @@
+---
+title: 'read'
+description: 'Read file contents'
+---
+
+## Overview
+
+The `read` tool reads and returns the complete contents of a file.
+
+## Function Signature
+
+Defined in `marco_code.py:91-94`:
+
+```python
+def read(file_path: str) -> str:
+    """Read and return the contents of a file."""
+    with open(file_path, "r") as f:
+        return f.read()
+```
+
+## Parameters
+
+<ParamField path="file_path" type="string" required>
+  The path to the file to read. Can be absolute or relative to the working directory.
+</ParamField>
+
+## Returns
+
+<ResponseField name="content" type="string">
+  The complete contents of the file as a string.
+</ResponseField>
+
+## Tool Definition
+
+The LLM sees this tool defined as (`marco_code.py:127-143`):
+
+```json
+{
+  "type": "function",
+  "function": {
+    "name": "read",
+    "description": "Read and return the contents of a file",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "type": "string",
+          "description": "The path to the file to read"
+        }
+      },
+      "required": ["file_path"]
+    }
+  }
+}
+```
+
+## Examples
+
+### Reading a Configuration File
+
+```python
+from marco_code import read
+
+config = read("config.json")
+print(config)
+```
+
+### Reading from a Subdirectory
+
+```python
+source_code = read("src/main.py")
+print(f"File length: {len(source_code)} characters")
+```
+
+### LLM Tool Call
+
+When the LLM calls this tool, the execution looks like:
+
+```python
+tool_call = {
+    "function": {
+        "name": "read",
+        "arguments": '{"file_path": "README.md"}'
+    }
+}
+
+fn_args = json.loads(tool_call["function"]["arguments"])
+result = read(**fn_args)  # Returns file contents
+```
+
+## Exceptions
+
+The function may raise standard Python file exceptions:
+
+- **`FileNotFoundError`**: If the specified file does not exist
+- **`PermissionError`**: If the process lacks permission to read the file
+- **`IsADirectoryError`**: If `file_path` points to a directory instead of a file
+- **`UnicodeDecodeError`**: If the file contains invalid UTF-8 characters
+
+These exceptions are caught by the agent loop (`marco_code.py:239-240`) and returned as error messages:
+
+```python
+except Exception as e:
+    result = f"Error executing {fn.name}: {e}"
+```
+
+## See Also
+
+- [write](/api/tools/write) - Write content to files
+- [bash](/api/tools/bash) - Execute shell commands

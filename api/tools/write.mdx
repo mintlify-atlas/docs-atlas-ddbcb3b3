@@ -1,0 +1,165 @@
+---
+title: 'write'
+description: 'Write content to files'
+---
+
+## Overview
+
+The `write` tool writes content to a file, automatically creating parent directories if they don't exist.
+
+## Function Signature
+
+Defined in `marco_code.py:97-102`:
+
+```python
+def write(file_path: str, content: str) -> str:
+    """Write content to a file, creating directories if needed."""
+    os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
+    with open(file_path, "w") as f:
+        f.write(content)
+    return f"Successfully wrote to {file_path}"
+```
+
+## Parameters
+
+<ParamField path="file_path" type="string" required>
+  The path to the file to write. Can be absolute or relative to the working directory.
+</ParamField>
+
+<ParamField path="content" type="string" required>
+  The content to write to the file. Overwrites any existing content.
+</ParamField>
+
+## Returns
+
+<ResponseField name="message" type="string">
+  A success message: `"Successfully wrote to {file_path}"`
+</ResponseField>
+
+## Directory Creation Behavior
+
+The function automatically creates parent directories using `os.makedirs()` with `exist_ok=True` (`marco_code.py:99`):
+
+```python
+os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
+```
+
+This means:
+- If the directory already exists, no error is raised
+- All intermediate directories are created automatically
+- If `file_path` has no directory component, it uses the current directory (`.`)
+
+### Example Directory Creation
+
+```python
+# Creates nested/path/ if it doesn't exist
+write("nested/path/file.txt", "Hello")
+
+# Creates deeply/nested/structure/
+write("deeply/nested/structure/data.json", '{"key": "value"}')
+```
+
+## Tool Definition
+
+The LLM sees this tool defined as (`marco_code.py:144-164`):
+
+```json
+{
+  "type": "function",
+  "function": {
+    "name": "write",
+    "description": "Write the contents to a file",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "type": "string",
+          "description": "The path to the file to write"
+        },
+        "content": {
+          "type": "string",
+          "description": "The content to write to the file"
+        }
+      },
+      "required": ["file_path", "content"]
+    }
+  }
+}
+```
+
+## Examples
+
+### Creating a Simple Text File
+
+```python
+from marco_code import write
+
+result = write("output.txt", "Hello, World!")
+print(result)  # "Successfully wrote to output.txt"
+```
+
+### Creating a Python Script
+
+```python
+script_content = '''#!/usr/bin/env python3
+
+def main():
+    print("Hello from script")
+
+if __name__ == "__main__":
+    main()
+'''
+
+write("scripts/hello.py", script_content)
+```
+
+### Writing JSON Configuration
+
+```python
+import json
+
+config = {
+    "api_key": "sk-...",
+    "model": "claude-haiku-4.5",
+    "max_tokens": 1000
+}
+
+write("config.json", json.dumps(config, indent=2))
+```
+
+### LLM Tool Call
+
+When the LLM calls this tool:
+
+```python
+tool_call = {
+    "function": {
+        "name": "write",
+        "arguments": '{"file_path": "output.txt", "content": "Test content"}'
+    }
+}
+
+fn_args = json.loads(tool_call["function"]["arguments"])
+result = write(**fn_args)  # Returns success message
+```
+
+## Important Notes
+
+- **Overwrites existing files**: The function opens files in write mode (`"w"`), which overwrites existing content
+- **Text mode only**: Files are opened in text mode, not binary mode
+- **UTF-8 encoding**: Uses Python's default text encoding (typically UTF-8)
+
+## Exceptions
+
+The function may raise standard Python file exceptions:
+
+- **`PermissionError`**: If the process lacks permission to write to the file or create directories
+- **`OSError`**: If there are system-level errors creating directories or writing the file
+- **`IsADirectoryError`**: If `file_path` points to an existing directory
+
+Exceptions are caught by the agent loop (`marco_code.py:239-240`).
+
+## See Also
+
+- [read](/api/tools/read) - Read file contents
+- [bash](/api/tools/bash) - Execute shell commands

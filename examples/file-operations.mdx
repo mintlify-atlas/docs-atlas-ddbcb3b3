@@ -1,0 +1,152 @@
+---
+title: File Operations
+description: Examples using the read and write tools for file manipulation
+---
+
+marco-code provides two file operation tools that handle common scenarios like reading configs, generating code, and creating documentation.
+
+## Create a New Python File with Boilerplate
+
+Generate a new file with standard structure:
+
+```bash
+marco-code -p "Create a new Python file called utils/helpers.py with a basic class structure and docstrings"
+```
+
+**Tool sequence:**
+1. `write(file_path="utils/helpers.py", content="...")`
+
+**Example output:**
+```
+  [tool] write({'file_path': 'utils/helpers.py', 'content': '"""Helper utilities...'})
+Created utils/helpers.py with a basic Helper class including __init__ and common utility methods.
+```
+
+<Tip>
+The `write()` function automatically creates parent directories using `os.makedirs()` (marco_code.py:99), so you don't need to create `utils/` first.
+</Tip>
+
+## Read a Config File and Modify It
+
+Update configuration values intelligently:
+
+```bash
+marco-code -p "Read config.json and change the API timeout from 30 to 60 seconds"
+```
+
+**Tool sequence:**
+1. `read(file_path="config.json")`
+2. Parse JSON and modify
+3. `write(file_path="config.json", content="...")`
+
+**Example interaction:**
+```
+  [tool] read({'file_path': 'config.json'})
+  [tool] write({'file_path': 'config.json', 'content': '{"api_timeout": 60, ...'})
+Successfully updated config.json. Changed api_timeout from 30 to 60 seconds.
+```
+
+<Note>
+The write tool returns a success message: `"Successfully wrote to {file_path}"` (marco_code.py:102).
+</Note>
+
+## Generate a Report from Multiple Files
+
+Aggregate information across files:
+
+```bash
+marco-code -p "Read all Python files in src/ and create a report.md listing all classes and their methods"
+```
+
+**Tool sequence:**
+1. `bash(command="find src -name '*.py'")`
+2. `read(file_path="src/module1.py")`
+3. `read(file_path="src/module2.py")`
+4. `write(file_path="report.md", content="...")`
+
+**Example output:**
+```
+  [tool] bash({'command': 'find src -name "*.py"'})
+  [tool] read({'file_path': 'src/marco_code.py'})
+  [tool] read({'file_path': 'src/utils.py'})
+  [tool] write({'file_path': 'report.md', 'content': '# Code Report\n\n## Classes...'})
+Created report.md with documentation for 5 classes and 23 methods.
+```
+
+## Understanding the File Tools
+
+### read(file_path: str) → str
+
+From marco_code.py:91:
+```python
+def read(file_path: str) -> str:
+    """Read and return the contents of a file."""
+    with open(file_path, "r") as f:
+        return f.read()
+```
+
+**Behavior:**
+- Opens file in read mode
+- Returns entire contents as a string
+- Raises `FileNotFoundError` if file doesn't exist (test_marco_code.py:36)
+
+### write(file_path: str, content: str) → str
+
+From marco_code.py:97:
+```python
+def write(file_path: str, content: str) -> str:
+    """Write content to a file, creating directories if needed."""
+    os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
+    with open(file_path, "w") as f:
+        f.write(content)
+    return f"Successfully wrote to {file_path}"
+```
+
+**Behavior:**
+- Creates parent directories automatically (test_marco_code.py:48)
+- Overwrites existing files
+- Returns success message
+
+## Complex File Operation Examples
+
+<CodeGroup>
+
+```bash Refactor Code
+marco-code -p "Read calculator.py, extract the add() and subtract() functions into a new math_utils.py file, and update the import in calculator.py"
+```
+
+```bash Generate Documentation
+marco-code -p "Read all docstrings from api.py and generate an API_REFERENCE.md file with examples"
+```
+
+```bash Merge Configuration
+marco-code -p "Read config.dev.json and config.prod.json, merge them with prod values taking precedence, and write to config.merged.json"
+```
+
+</CodeGroup>
+
+## Error Handling
+
+When file operations fail, errors are captured and returned as tool results:
+
+```bash
+marco-code -p "Read /nonexistent/file.txt"
+```
+
+**What happens:**
+```
+  [tool] read({'file_path': '/nonexistent/file.txt'})
+I encountered an error: FileNotFoundError. The file /nonexistent/file.txt does not exist.
+```
+
+From marco_code.py:240:
+```python
+except Exception as e:
+    result = f"Error executing {fn.name}: {e}"
+```
+
+The LLM receives the error message and can respond appropriately or try alternative approaches.
+
+<Tip>
+When working with nested directories, the `write` tool handles path creation automatically, so prompts like "create src/tests/test_utils.py" work without manually creating directories.
+</Tip>

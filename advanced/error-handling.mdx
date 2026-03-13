@@ -1,0 +1,209 @@
+---
+title: Error Handling
+description: How marco-code handles errors gracefully and enables LLM recovery
+---
+
+marco-code is designed to handle errors gracefully, returning error messages as tool results instead of crashing. This allows the LLM to see what went wrong and retry with a corrected approach.
+
+## Error Handling Philosophy
+
+When a tool execution fails, marco-code:
+1. Catches the exception
+2. Returns a descriptive error message as the tool result
+3. Continues the agent loop
+4. Allows the LLM to see the error and adapt its strategy
+
+This design is critical for autonomous operation—the LLM can learn from failures and self-correct.
+
+## Error Types Handled
+
+### Missing Tool Errors (KeyError)
+
+When the LLM attempts to call a tool that doesn't exist:
+
+```python title="marco_code.py:231-236"
+try:
+    fn_args = json.loads(fn.arguments)
+    print(f"  [tool] {fn.name}({fn_args})", file=sys.stderr)
+    result = TOOLS[fn.name](**fn_args)
+except (KeyError, json.JSONDecodeError, TypeError) as e:
+    result = f"Error: {type(e).__name__}: {e}"
+```
+
+<Note>
+The error is returned as a string to the LLM, not raised as an exception. This allows the conversation to continue.
+</Note>
+
+**Example test case:**
+
+```python title="test_marco_code.py:175-193"
+def test_unknown_tool_returns_error(self, mock_get_client, capsys):
+    """LLM calls a non-existent tool — error returned as tool result, not crash."""
+    mock_client = MagicMock()
+    mock_get_client.return_value = mock_client
+
+    tool_call = _make_tool_call("nonexistent", {"x": 1})
+    resp1 = MagicMock()
+    resp1.choices = [_make_choice(tool_calls=[tool_call], finish_reason="tool_calls")]
+
+    resp2 = MagicMock()
+    resp2.choices = [_make_choice(content="Sorry, that tool failed.")]
+
+    mock_client.chat.completions.create.side_effect = [resp1, resp2]
+
+    with patch("sys.argv", ["marco-code", "-p", "do something"]):
+        main()
+
+    captured = capsys.readouterr()
+    assert "Sorry" in captured.out
+```
+
+### JSON Decode Errors
+
+When the LLM sends malformed JSON in tool arguments:
+
+```python title="marco_code.py:232-236"
+try:
+    fn_args = json.loads(fn.arguments)
+    print(f"  [tool] {fn.name}({fn_args})", file=sys.stderr)
+    result = TOOLS[fn.name](**fn_args)
+except (KeyError, json.JSONDecodeError, TypeError) as e:
+    result = f"Error: {type(e).__name__}: {e}"
+```
+
+**Example test case:**
+
+```python title="test_marco_code.py:196-218"
+def test_malformed_json_returns_error(self, mock_get_client, capsys):
+    """LLM sends malformed JSON arguments — error returned, not crash."""
+    mock_client = MagicMock()
+    mock_get_client.return_value = mock_client
+
+    tool_call = MagicMock()
+    tool_call.id = "call_bad"
+    tool_call.function.name = "read"
+    tool_call.function.arguments = "not valid json"
+
+    resp1 = MagicMock()
+    resp1.choices = [_make_choice(tool_calls=[tool_call], finish_reason="tool_calls")]
+
+    resp2 = MagicMock()
+    resp2.choices = [_make_choice(content="I'll try differently.")]
+
+    mock_client.chat.completions.create.side_effect = [resp1, resp2]
+
+    with patch("sys.argv", ["marco-code", "-p", "test"]):
+        main()
+
+    captured = capsys.readouterr()
+    assert "differently" in captured.out
+```
+
+### File Not Found Errors
+
+When the `read` tool is called with a non-existent file path:
+
+```python title="test_marco_code.py:36-38"
+def test_file_not_found(self):
+    with pytest.raises(FileNotFoundError):
+        read("/nonexistent/path/file.txt")
+```
+
+The exception is caught by the agent loop's generic exception handler:
+
+```python title="marco_code.py:239-240"
+except Exception as e:
+    result = f"Error executing {fn.name}: {e}"
+```
+
+<Tip>
+When debugging file errors, check stderr output for `[tool]` logs that show the exact arguments passed to each tool.
+</Tip>
+
+### Command Timeout Errors
+
+Bash commands that exceed the timeout are handled gracefully:
+
+```python title="marco_code.py:52"
+BASH_TIMEOUT = 30  # seconds
+```
+
+```python title="marco_code.py:107-116"
+def bash(command: str) -> str:
+    """Execute a shell command and return stdout + stderr."""
+    try:
+        result = subprocess.run(
+            command, shell=True, capture_output=True, text=True, timeout=BASH_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return f"Error: command timed out after {BASH_TIMEOUT}s: {command}"
+    output = result.stdout
+    if result.stderr:
+        output += "\n" + result.stderr
+    return output
+```
+
+**Example test case:**
+
+```python title="test_marco_code.py:67-71"
+@patch("marco_code.BASH_TIMEOUT", 1)
+def test_timeout_returns_error_message(self):
+    result = bash("sleep 10")
+    assert "timed out" in result
+    assert "sleep 10" in result
+```
+
+<Warning>
+The default timeout is 30 seconds. Long-running commands (builds, tests, downloads) may need to be split into smaller steps.
+</Warning>
+
+## Generic Exception Handling
+
+All other exceptions are caught with a generic handler:
+
+```python title="marco_code.py:239-240"
+except Exception as e:
+    result = f"Error executing {fn.name}: {e}"
+```
+
+This ensures that **any** tool execution failure becomes a tool result, not a crash.
+
+## Benefits of Error-as-Result Design
+
+### Self-Correcting Behavior
+
+Because errors are returned as tool results in the conversation history, the LLM can:
+- Read the error message
+- Understand what went wrong
+- Adjust its strategy
+- Retry with corrected parameters
+
+### No Silent Failures
+
+Errors are logged to stderr with the `[tool]` prefix:
+
+```python title="marco_code.py:233"
+print(f"  [tool] {fn.name}({fn_args})", file=sys.stderr)
+```
+
+This provides visibility into tool execution even when errors occur.
+
+### Graceful Degradation
+
+Even if multiple tools fail, marco-code continues running. The LLM can:
+- Try alternative approaches
+- Request clarification from the user
+- Work within constraints (e.g., read-only access if write fails)
+
+## Testing Error Scenarios
+
+The test suite validates error handling for:
+- ✓ Unknown tools (KeyError)
+- ✓ Malformed JSON (JSONDecodeError)
+- ✓ File not found (FileNotFoundError)
+- ✓ Command timeouts (TimeoutExpired)
+- ✓ Generic exceptions (Exception)
+
+<Note>
+All error handling tests verify that main() completes successfully, proving that errors don't crash the agent loop.
+</Note>

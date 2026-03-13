@@ -1,97 +1,78 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "marco-code"
+description: "A minimal LLM-powered coding assistant demonstrating the core agent loop pattern"
 ---
 
-## Setting up
+<Note>
+marco-code is a lightweight Python CLI tool that shows how AI coding assistants work under the hood.
+</Note>
 
-Get your documentation site up and running in minutes.
+## What is marco-code?
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
+marco-code is a minimal implementation of an LLM-powered coding assistant. It demonstrates the core **agent loop pattern** — the iterative process where an AI model:
+
+1. Receives a user prompt
+2. Decides which tools to call
+3. Executes those tools
+4. Feeds results back to the model
+5. Repeats until the task is complete
+
+With just three built-in tools (`read`, `write`, `bash`), marco-code can help with a wide range of software engineering tasks.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Agent Loop Pattern" icon="rotate" href="/concepts/agent-loop">
+    Learn the iterative pattern used by modern AI coding assistants
+  </Card>
+  <Card title="Built-in Tools" icon="wrench" href="/concepts/tools">
+    File read/write and shell execution capabilities out of the box
+  </Card>
+  <Card title="OpenRouter Integration" icon="plug" href="/configuration/environment-variables">
+    OpenAI-compatible API access to multiple LLM providers
+  </Card>
+  <Card title="Error Handling" icon="shield-check" href="/advanced/error-handling">
+    Robust timeout and error management for production use
+  </Card>
+</CardGroup>
+
+## Quick Example
+
+```bash
+marco-code -p "Create a Python script that prints Hello World"
+```
+
+marco-code will:
+- Understand your request
+- Call the `write` tool to create the file
+- Return a confirmation message
+
+<Card title="Get Started" icon="rocket" href="/quickstart" horizontal>
+  Install marco-code and run your first command in under 2 minutes
 </Card>
 
-## Make it yours
+## Why marco-code?
 
-Design a docs site that looks great and empowers your users.
+Most AI coding assistants are complex systems with thousands of lines of code. marco-code strips away the complexity to reveal the essential pattern:
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+- **Educational**: See exactly how the agent loop works
+- **Minimal**: Under 300 lines of Python code
+- **Extensible**: Easy to add custom tools and modify behavior
+- **Production-Ready**: Includes proper error handling and timeouts
 
-## Create beautiful pages
+## Use Cases
 
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+<CardGroup cols={2}>
+  <Card title="Basic File Operations" icon="file" href="/examples/file-operations">
+    Read, write, and modify files with natural language
   </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
+  <Card title="Shell Commands" icon="terminal" href="/examples/shell-commands">
+    Execute bash commands and capture output
   </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
+  <Card title="Code Analysis" icon="magnifying-glass" href="/examples/basic-usage">
+    Analyze codebases and generate reports
   </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
+  <Card title="Custom Workflows" icon="diagram-project" href="/api/python/main">
+    Build custom automation on top of the Python API
   </Card>
-</Columns>
-
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+</CardGroup>

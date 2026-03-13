@@ -1,0 +1,186 @@
+---
+title: 'bash'
+description: 'Execute shell commands'
+---
+
+## Overview
+
+The `bash` tool executes shell commands and returns their combined stdout and stderr output.
+
+## Function Signature
+
+Defined in `marco_code.py:105-116`:
+
+```python
+def bash(command: str) -> str:
+    """Execute a shell command and return stdout + stderr."""
+    try:
+        result = subprocess.run(
+            command, shell=True, capture_output=True, text=True, timeout=BASH_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return f"Error: command timed out after {BASH_TIMEOUT}s: {command}"
+    output = result.stdout
+    if result.stderr:
+        output += "\n" + result.stderr
+    return output
+```
+
+## Parameters
+
+<ParamField path="command" type="string" required>
+  The shell command to execute. Can include pipes, redirects, and other shell features.
+</ParamField>
+
+## Returns
+
+<ResponseField name="output" type="string">
+  Combined stdout and stderr from the command execution. If stderr is present, it's appended to stdout with a newline separator.
+</ResponseField>
+
+## Timeout Behavior
+
+Commands are limited to **30 seconds** execution time (`marco_code.py:52`):
+
+```python
+BASH_TIMEOUT = 30  # seconds
+```
+
+If a command exceeds this timeout, the function catches `subprocess.TimeoutExpired` and returns an error message (`marco_code.py:111-112`):
+
+```python
+except subprocess.TimeoutExpired:
+    return f"Error: command timed out after {BASH_TIMEOUT}s: {command}"
+```
+
+## Tool Definition
+
+The LLM sees this tool defined as (`marco_code.py:165-182`):
+
+```json
+{
+  "type": "function",
+  "function": {
+    "name": "bash",
+    "description": "Execute a shell command",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "The shell command to execute"
+        }
+      },
+      "required": ["command"]
+    }
+  }
+}
+```
+
+## Examples
+
+### Running a Simple Command
+
+```python
+from marco_code import bash
+
+output = bash("ls -la")
+print(output)
+```
+
+### Using Pipes and Shell Features
+
+```python
+# Count Python files
+result = bash("find . -name '*.py' | wc -l")
+print(f"Python files: {result.strip()}")
+```
+
+### Running Tests
+
+```python
+test_output = bash("pytest tests/ -v")
+print(test_output)
+```
+
+### Git Operations
+
+```python
+status = bash("git status --short")
+print("Modified files:")
+print(status)
+```
+
+### LLM Tool Call
+
+When the LLM calls this tool:
+
+```python
+tool_call = {
+    "function": {
+        "name": "bash",
+        "arguments": '{"command": "ls -la"}'
+    }
+}
+
+fn_args = json.loads(tool_call["function"]["arguments"])
+result = bash(**fn_args)  # Returns command output
+```
+
+## Output Handling
+
+The function combines stdout and stderr (`marco_code.py:113-116`):
+
+```python
+output = result.stdout
+if result.stderr:
+    output += "\n" + result.stderr
+return output
+```
+
+This means:
+- Normal output (stdout) comes first
+- Error messages (stderr) are appended with a newline
+- Both streams are returned as a single string
+
+### Example Output
+
+```python
+result = bash("echo 'Hello' && echo 'Error!' >&2")
+# Returns: "Hello\nError!"
+```
+
+## Timeout Exception Handling
+
+The agent loop also catches timeout exceptions (`marco_code.py:237-238`):
+
+```python
+except subprocess.TimeoutExpired as e:
+    result = f"Error: command timed out after {BASH_TIMEOUT}s"
+```
+
+This provides a safety mechanism if the timeout exception propagates beyond the function.
+
+## Important Notes
+
+- **Shell=True**: Commands run through the system shell, enabling pipes, redirects, and environment variable expansion
+- **Text mode**: Output is captured as text (UTF-8), not bytes
+- **No exit code**: The function returns output, not the exit code. Both successful and failed commands return their output
+- **Working directory**: Commands execute in the current working directory (`os.getcwd()`)
+
+## Security Considerations
+
+Since `shell=True` is used, be cautious with untrusted input:
+
+```python
+# Potentially dangerous if user_input is untrusted
+command = f"rm -rf {user_input}"
+bash(command)
+```
+
+The LLM generates commands based on its training, but always verify sensitive operations.
+
+## See Also
+
+- [read](/api/tools/read) - Read file contents
+- [write](/api/tools/write) - Write content to files

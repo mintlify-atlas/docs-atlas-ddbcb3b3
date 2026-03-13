@@ -1,0 +1,302 @@
+---
+title: 'Agent Loop'
+description: 'Understand the core pattern that powers marco-code: the agent loop'
+icon: 'rotate'
+---
+
+The **agent loop** is the fundamental pattern that enables marco-code to function as an autonomous coding assistant. Instead of executing a single command and exiting, the agent iteratively calls the LLM until it has gathered enough information to respond to the user's request.
+
+## How It Works
+
+The agent loop follows a simple but powerful cycle:
+
+<Steps>
+  <Step title="User provides a prompt">
+    The conversation starts with the user's request via the `-p` flag.
+  </Step>
+  
+  <Step title="LLM analyzes the request">
+    The model examines the prompt along with conversation history and available tools.
+  </Step>
+  
+  <Step title="LLM decides: respond or use tools">
+    The model either:
+    - Calls one or more tools to gather information
+    - Returns a final text response with `finish_reason="stop"`
+  </Step>
+  
+  <Step title="Tools execute and return results">
+    If tools were called, marco-code executes them and appends results to the message history.
+  </Step>
+  
+  <Step title="Loop continues">
+    The updated conversation (including tool results) is sent back to the LLM, and the cycle repeats.
+  </Step>
+</Steps>
+
+## Data Flow Diagram
+
+Here's how information flows through the agent loop:
+
+```
+    User prompt (-p)
+           │
+           ▼
+    ┌─────────────┐
+    │  messages[]  │◄──────────────────────────────┐
+    │  (history)   │                               │
+    └──────┬──────┘                               │
+           │                                       │
+           ▼                                       │
+    ┌─────────────┐    finish_reason="stop"       │
+    │ call_model() ├──────────────────────► print() & exit
+    │  (OpenRouter)│                               │
+    └──────┬──────┘                               │
+           │ tool_calls?                           │
+           ▼                                       │
+    ┌─────────────┐    result string              │
+    │ TOOLS[name] ├───────────────────────────────┘
+    │ read/write/ │
+    │ bash        │
+    └─────────────┘
+```
+
+## Implementation
+
+The agent loop is implemented in the `main()` function. Here's the actual code from marco-code:
+
+```python
+# Initialize conversation with system context and user's prompt
+messages = [
+    {"role": "system", "content": _build_system_prompt()},
+    {"role": "user", "content": args.p},
+]
+
+# AGENT LOOP
+# This is the core pattern: repeatedly call the LLM until it stops.
+# Each iteration, the LLM either:
+#   1. Calls one or more tools (we execute them and continue)
+#   2. Responds with text and finish_reason="stop" (we exit the loop)
+for _iteration in range(MAX_ITERATIONS):
+    chat = call_model(messages, TOOL_DEFINITIONS)
+
+    if not chat.choices or len(chat.choices) == 0:
+        raise RuntimeError("No choices in response")
+
+    message = chat.choices[0].message
+    messages.append(message)
+
+    # If the LLM requested tool calls, execute them
+    if message.tool_calls:
+        for tool_call in message.tool_calls:
+            fn = tool_call.function
+
+            try:
+                fn_args = json.loads(fn.arguments)
+                print(f"  [tool] {fn.name}({fn_args})", file=sys.stderr)
+                result = TOOLS[fn.name](**fn_args)
+            except (KeyError, json.JSONDecodeError, TypeError) as e:
+                result = f"Error: {type(e).__name__}: {e}"
+            except subprocess.TimeoutExpired as e:
+                result = f"Error: command timed out after {BASH_TIMEOUT}s"
+            except Exception as e:
+                result = f"Error executing {fn.name}: {e}"
+
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result,
+                }
+            )
+
+    # Exit loop when the LLM is done (no more tool calls)
+    if chat.choices[0].finish_reason == "stop":
+        break
+else:
+    print(
+        f"Warning: reached maximum iterations ({MAX_ITERATIONS})",
+        file=sys.stderr,
+    )
+
+# Print the final response
+final_content = chat.choices[0].message.content
+if final_content:
+    print(final_content)
+else:
+    print("Stopped: reached maximum iterations without a final response.")
+```
+
+## Key Components
+
+### Message History
+
+The `messages` list maintains the entire conversation, including:
+- System prompt (with working directory and platform info)
+- User's original request
+- LLM responses (text and tool calls)
+- Tool execution results
+
+This history grows with each iteration, giving the LLM full context of what has happened.
+
+### finish_reason
+
+The `finish_reason` field in the API response determines whether the loop continues:
+
+- **`"stop"`** — The LLM is done and has provided a final response. The loop exits.
+- **`"tool_calls"`** — The LLM wants to use tools. The loop continues after executing them.
+
+### Tool Execution
+
+When the LLM requests tool calls:
+
+1. marco-code parses the JSON arguments
+2. Looks up the function in the `TOOLS` dictionary
+3. Executes it and captures the result (or error)
+4. Appends the result as a tool message with `role="tool"`
+
+<Note>
+  Tool execution is **synchronous** — all tools in a single response are executed sequentially before calling the model again.
+</Note>
+
+## MAX_ITERATIONS Cap
+
+The loop has a safety limit defined by `MAX_ITERATIONS` (currently **10**).
+
+### Why It Exists
+
+Without a cap, a confused or stuck LLM could loop indefinitely, consuming tokens and never producing a final answer. The cap ensures:
+
+- **Cost control** — Limits API usage on runaway loops
+- **Predictable behavior** — Users won't wait forever for a response
+- **Fail-safe** — Forces termination even if the LLM misbehaves
+
+### What Happens When the Cap Is Reached
+
+If the loop exhausts all iterations:
+
+1. A warning is printed to stderr:
+   ```
+   Warning: reached maximum iterations (10)
+   ```
+
+2. The last response content is printed (if available)
+
+3. If the last response had no text content:
+   ```
+   Stopped: reached maximum iterations without a final response.
+   ```
+
+<Note>
+  In practice, most tasks complete in **1-3 iterations**. Hitting the cap usually indicates an issue with the prompt or the LLM's reasoning.
+</Note>
+
+## Multi-Turn Interaction Examples
+
+### Example 1: Simple Task (1 iteration)
+
+**User prompt:**
+```bash
+marco-code -p "say hello"
+```
+
+**Loop execution:**
+- Iteration 1: LLM responds with `"Hello!"` and `finish_reason="stop"`
+- Loop exits immediately
+
+### Example 2: Read Then Respond (2 iterations)
+
+**User prompt:**
+```bash
+marco-code -p "summarize README.md"
+```
+
+**Loop execution:**
+- Iteration 1: LLM calls `read(file_path="README.md")`
+- Tool executes and returns file contents
+- Iteration 2: LLM responds with summary and `finish_reason="stop"`
+
+### Example 3: Complex Task (3+ iterations)
+
+**User prompt:**
+```bash
+marco-code -p "find all Python files and count lines of code"
+```
+
+**Loop execution:**
+- Iteration 1: LLM calls `bash(command="find . -name '*.py'")`
+- Tool returns list of files
+- Iteration 2: LLM calls `bash(command="wc -l *.py")`
+- Tool returns line counts
+- Iteration 3: LLM responds with formatted summary and `finish_reason="stop"`
+
+### Example 4: Write and Verify (3 iterations)
+
+**User prompt:**
+```bash
+marco-code -p "create hello.py that prints 'Hello, World!'"
+```
+
+**Loop execution:**
+- Iteration 1: LLM calls `write(file_path="hello.py", content="print('Hello, World!')")`
+- Tool confirms write success
+- Iteration 2: LLM calls `bash(command="python hello.py")`
+- Tool returns program output
+- Iteration 3: LLM confirms creation and `finish_reason="stop"`
+
+## Error Handling in the Loop
+
+The agent loop gracefully handles errors without crashing:
+
+### Tool Execution Errors
+
+If a tool fails (file not found, command error, etc.), the error message is returned as the tool result:
+
+```python
+try:
+    fn_args = json.loads(fn.arguments)
+    result = TOOLS[fn.name](**fn_args)
+except (KeyError, json.JSONDecodeError, TypeError) as e:
+    result = f"Error: {type(e).__name__}: {e}"
+except Exception as e:
+    result = f"Error executing {fn.name}: {e}"
+```
+
+The LLM sees the error message and can:
+- Try a different approach
+- Report the error to the user
+- Ask for clarification
+
+### Unknown Tools
+
+If the LLM requests a tool that doesn't exist, a `KeyError` is caught and returned as an error message.
+
+### Malformed JSON
+
+If the LLM sends invalid JSON in tool arguments, a `JSONDecodeError` is caught and the loop continues.
+
+<Note>
+  Errors are **never fatal** — they're simply additional information for the LLM to reason about.
+</Note>
+
+## Design Principles
+
+The agent loop embodies several key design principles:
+
+1. **Simplicity** — The entire loop is ~50 lines of straightforward Python
+2. **Transparency** — All tool calls are logged to stderr for debugging
+3. **Resilience** — Errors become tool results, not crashes
+4. **Statefulness** — Full conversation history is preserved
+5. **Autonomy** — The LLM decides when to stop, not hard-coded logic
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Tools" icon="wrench" href="/concepts/tools">
+    Learn about the three built-in tools: read, write, and bash
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api/cli">
+    Explore the command-line interface and tool APIs
+  </Card>
+</CardGroup>

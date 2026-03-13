@@ -1,0 +1,205 @@
+---
+title: Shell Commands
+description: Examples using the bash tool to execute commands and analyze results
+---
+
+The `bash` tool lets marco-code execute shell commands with a 30-second timeout, capturing both stdout and stderr.
+
+## Run Tests and Analyze Failures
+
+Execute your test suite and get intelligent analysis:
+
+```bash
+marco-code -p "Run pytest and explain any failures in detail"
+```
+
+**Tool sequence:**
+1. `bash(command="pytest")`
+2. If failures detected: `read(file_path="test_marco_code.py")` to analyze
+3. Possibly `read(file_path="marco_code.py")` to understand implementation
+
+**Example with passing tests:**
+```
+  [tool] bash({'command': 'pytest'})
+======================== 12 passed in 0.8s ========================
+All tests passed! The test suite covers:
+- read/write/bash tool implementations
+- Agent loop with tool calls
+- Error handling for malformed inputs
+```
+
+**Example with failures:**
+```
+  [tool] bash({'command': 'pytest'})
+  [tool] read({'file_path': 'test_marco_code.py'})
+Test failure in test_timeout_returns_error_message (line 68):
+The test expects timeout handling but the command completed too quickly.
+Consider increasing BASH_TIMEOUT or using a longer sleep command.
+```
+
+## Check Git Status and Create Commit
+
+Multi-step git workflow:
+
+```bash
+marco-code -p "Check git status, stage all Python files, and create a commit with a descriptive message"
+```
+
+**Tool sequence:**
+1. `bash(command="git status")`
+2. `bash(command="git add *.py")`
+3. `bash(command="git diff --cached")`
+4. `bash(command="git commit -m 'Add feature X'")`
+
+**Example output:**
+```
+  [tool] bash({'command': 'git status'})
+  [tool] bash({'command': 'git add *.py'})
+  [tool] bash({'command': 'git diff --cached --stat'})
+  [tool] bash({'command': 'git commit -m "Add bash timeout handling and error tests"'})
+Committed changes to 2 files:
+- marco_code.py: Added BASH_TIMEOUT constant
+- test_marco_code.py: Added test_timeout_returns_error_message
+```
+
+<Note>
+Commands can be chained in a single bash call using `&&` if needed, but marco-code typically calls bash multiple times for clarity.
+</Note>
+
+## Install Dependencies and Verify
+
+Package management workflow:
+
+```bash
+marco-code -p "Install pytest using pip and verify it's working by running pytest --version"
+```
+
+**Tool sequence:**
+1. `bash(command="pip install pytest")`
+2. `bash(command="pytest --version")`
+
+**Example output:**
+```
+  [tool] bash({'command': 'pip install pytest'})
+  [tool] bash({'command': 'pytest --version'})
+Installed pytest successfully. Current version: pytest 7.4.0
+```
+
+## Understanding the Bash Tool
+
+From marco_code.py:105:
+```python
+def bash(command: str) -> str:
+    """Execute a shell command and return stdout + stderr."""
+    try:
+        result = subprocess.run(
+            command, shell=True, capture_output=True, text=True, timeout=BASH_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return f"Error: command timed out after {BASH_TIMEOUT}s: {command}"
+    output = result.stdout
+    if result.stderr:
+        output += "\n" + result.stderr
+    return output
+```
+
+**Key behaviors:**
+- **Timeout**: Commands must complete within 30 seconds (BASH_TIMEOUT = 30)
+- **Output**: Captures both stdout and stderr
+- **Exit codes**: Non-zero exits don't raise exceptions (test_marco_code.py:63)
+- **Errors**: Timeout returns error message, not exception (test_marco_code.py:68)
+
+## Timeout Behavior
+
+Long-running commands will timeout:
+
+```bash
+marco-code -p "Run sleep 60"
+```
+
+**Output:**
+```
+  [tool] bash({'command': 'sleep 60'})
+The command timed out after 30 seconds. Long-running processes should be executed outside of marco-code.
+```
+
+From test_marco_code.py:67:
+```python
+@patch("marco_code.BASH_TIMEOUT", 1)
+def test_timeout_returns_error_message(self):
+    result = bash("sleep 10")
+    assert "timed out" in result
+    assert "sleep 10" in result
+```
+
+<Tip>
+The 30-second timeout prevents the agent loop from hanging on long operations. For tasks like training models or long builds, run them separately.
+</Tip>
+
+## Complex Shell Command Examples
+
+<CodeGroup>
+
+```bash Code Quality Check
+marco-code -p "Run flake8 on all Python files and explain any style violations"
+```
+
+```bash Dependency Audit
+marco-code -p "Run pip list, check for outdated packages with pip list --outdated, and summarize what needs updating"
+```
+
+```bash Log Analysis
+marco-code -p "Tail the last 100 lines of app.log and count how many ERROR level messages there are"
+```
+
+```bash Docker Workflow
+marco-code -p "Build the Docker image, run it in detached mode, and show me the running containers"
+```
+
+</CodeGroup>
+
+## Handling Command Failures
+
+Non-zero exit codes are captured normally:
+
+```bash
+marco-code -p "Run a command that will fail and tell me what went wrong"
+```
+
+**Example with grep finding no matches:**
+```
+  [tool] bash({'command': 'grep NOTEXIST file.txt'})
+The grep command found no matches. Exit code 1 indicates no lines matched the pattern.
+```
+
+From test_marco_code.py:63:
+```python
+def test_nonzero_exit_does_not_raise(self):
+    result = bash("exit 1")
+    assert isinstance(result, str)
+```
+
+The bash tool returns output as a string regardless of exit code, letting the LLM interpret the results.
+
+## Combining Bash with File Operations
+
+marco-code often uses bash + file tools together:
+
+```bash
+marco-code -p "Run mypy on src/ and save the output to mypy-report.txt"
+```
+
+**Tool sequence:**
+1. `bash(command="mypy src/")`
+2. `write(file_path="mypy-report.txt", content="<mypy output>")`
+
+**Example:**
+```
+  [tool] bash({'command': 'mypy src/'})
+  [tool] write({'file_path': 'mypy-report.txt', 'content': 'src/marco_code.py:76...'})
+Ran mypy type checking and saved results to mypy-report.txt. Found 3 type errors.
+```
+
+<Note>
+Stderr is automatically included in bash tool output (marco_code.py:114), so error messages from commands are visible to the LLM.
+</Note>

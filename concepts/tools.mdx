@@ -1,0 +1,647 @@
+---
+title: 'Tools'
+description: 'How marco-code uses function calling to interact with the filesystem and shell'
+icon: 'wrench'
+---
+
+Tools are the **bridge between the LLM and the outside world**. They allow the model to read files, write code, run commands, and gather information — all autonomously within the agent loop.
+
+marco-code implements three essential tools: `read`, `write`, and `bash`. These cover the core operations needed for a coding assistant.
+
+## How Tools Work
+
+<Steps>
+  <Step title="Tool definitions are sent to the LLM">
+    Each API request includes `TOOL_DEFINITIONS` — JSON schemas describing available tools and their parameters.
+  </Step>
+  
+  <Step title="LLM decides to call a tool">
+    Based on the user's prompt and conversation context, the model determines which tool(s) to use.
+  </Step>
+  
+  <Step title="marco-code parses the tool call">
+    The response contains a `tool_calls` array with function names and JSON arguments.
+  </Step>
+  
+  <Step title="Python function executes">
+    marco-code looks up the function in the `TOOLS` dictionary and executes it.
+  </Step>
+  
+  <Step title="Result is fed back to the LLM">
+    The tool's output (or error) is appended to the message history as a tool result.
+  </Step>
+</Steps>
+
+<Note>
+  The LLM **never executes code directly**. It only requests tool calls, and marco-code safely executes them in the Python runtime.
+</Note>
+
+## Tool Architecture
+
+marco-code uses a simple mapping between tool names and Python functions:
+
+```python
+# Map tool names to their implementations for easy lookup
+TOOLS = {"read": read, "write": write, "bash": bash}
+```
+
+When the LLM calls a tool:
+
+1. Parse the tool name and arguments from the API response
+2. Look up the function: `TOOLS[fn.name]`
+3. Execute with arguments: `TOOLS[fn.name](**fn_args)`
+4. Return the result string
+
+This pattern makes it trivial to add new tools — just define the function and add it to the dictionary.
+
+## Built-in Tools
+
+<Tabs>
+  <Tab title="read">
+    ### read
+    
+    Read and return the contents of a file.
+    
+    #### Parameters
+    
+    <ParamField path="file_path" type="string" required>
+      The path to the file to read. Can be absolute or relative to the working directory.
+    </ParamField>
+    
+    #### Implementation
+    
+    ```python
+    def read(file_path: str) -> str:
+        """Read and return the contents of a file."""
+        with open(file_path, "r") as f:
+            return f.read()
+    ```
+    
+    #### Tool Definition (JSON Schema)
+    
+    ```json
+    {
+      "type": "function",
+      "function": {
+        "name": "read",
+        "description": "Read and return the contents of a file",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "file_path": {
+              "type": "string",
+              "description": "The path to the file to read"
+            }
+          },
+          "required": ["file_path"]
+        }
+      }
+    }
+    ```
+    
+    #### Example Usage
+    
+    **User prompt:**
+    ```bash
+    marco-code -p "show me the contents of config.json"
+    ```
+    
+    **LLM calls:**
+    ```json
+    {
+      "name": "read",
+      "arguments": "{\"file_path\": \"config.json\"}"
+    }
+    ```
+    
+    **Tool returns:**
+    ```json
+    {"api_key": "...", "timeout": 30}
+    ```
+    
+    #### Error Handling
+    
+    If the file doesn't exist, Python raises `FileNotFoundError`, which is caught by the agent loop and returned as an error message:
+    
+    ```
+    Error: FileNotFoundError: [Errno 2] No such file or directory: 'config.json'
+    ```
+    
+    The LLM sees this error and can respond appropriately (e.g., "That file doesn't exist. Did you mean something else?").
+  </Tab>
+  
+  <Tab title="write">
+    ### write
+    
+    Write content to a file, creating parent directories if needed.
+    
+    #### Parameters
+    
+    <ParamField path="file_path" type="string" required>
+      The path to the file to write. Parent directories will be created automatically.
+    </ParamField>
+    
+    <ParamField path="content" type="string" required>
+      The content to write to the file. Overwrites existing content.
+    </ParamField>
+    
+    #### Implementation
+    
+    ```python
+    def write(file_path: str, content: str) -> str:
+        """Write content to a file, creating directories if needed."""
+        os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
+        with open(file_path, "w") as f:
+            f.write(content)
+        return f"Successfully wrote to {file_path}"
+    ```
+    
+    #### Tool Definition (JSON Schema)
+    
+    ```json
+    {
+      "type": "function",
+      "function": {
+        "name": "write",
+        "description": "Write the contents to a file",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "file_path": {
+              "type": "string",
+              "description": "The path to the file to write"
+            },
+            "content": {
+              "type": "string",
+              "description": "The content to write to the file"
+            }
+          },
+          "required": ["file_path", "content"]
+        }
+      }
+    }
+    ```
+    
+    #### Example Usage
+    
+    **User prompt:**
+    ```bash
+    marco-code -p "create a hello.py file that prints hello world"
+    ```
+    
+    **LLM calls:**
+    ```json
+    {
+      "name": "write",
+      "arguments": "{\"file_path\": \"hello.py\", \"content\": \"print('Hello, World!')\\n\"}"
+    }
+    ```
+    
+    **Tool returns:**
+    ```
+    Successfully wrote to hello.py
+    ```
+    
+    #### Nested Directories
+    
+    The `write` tool automatically creates parent directories:
+    
+    ```python
+    os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
+    ```
+    
+    So calling `write("src/utils/helpers.py", "...")` will create `src/utils/` if it doesn't exist.
+    
+    <Note>
+      The `write` tool **overwrites** existing files. There's no append mode or confirmation prompt.
+    </Note>
+  </Tab>
+  
+  <Tab title="bash">
+    ### bash
+    
+    Execute a shell command and return stdout + stderr.
+    
+    #### Parameters
+    
+    <ParamField path="command" type="string" required>
+      The shell command to execute. Can include pipes, redirects, and multiple commands with `&&` or `;`.
+    </ParamField>
+    
+    #### Implementation
+    
+    ```python
+    def bash(command: str) -> str:
+        """Execute a shell command and return stdout + stderr."""
+        try:
+            result = subprocess.run(
+                command, shell=True, capture_output=True, text=True, timeout=BASH_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            return f"Error: command timed out after {BASH_TIMEOUT}s: {command}"
+        output = result.stdout
+        if result.stderr:
+            output += "\n" + result.stderr
+        return output
+    ```
+    
+    #### Tool Definition (JSON Schema)
+    
+    ```json
+    {
+      "type": "function",
+      "function": {
+        "name": "bash",
+        "description": "Execute a shell command",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "The shell command to execute"
+            }
+          },
+          "required": ["command"]
+        }
+      }
+    }
+    ```
+    
+    #### Example Usage
+    
+    **User prompt:**
+    ```bash
+    marco-code -p "list all Python files in the current directory"
+    ```
+    
+    **LLM calls:**
+    ```json
+    {
+      "name": "bash",
+      "arguments": "{\"command\": \"ls *.py\"}"
+    }
+    ```
+    
+    **Tool returns:**
+    ```
+    marco_code.py
+    test_marco_code.py
+    setup.py
+    ```
+    
+    #### Timeout Protection
+    
+    The bash tool has a timeout (default **30 seconds**) to prevent hanging on long-running commands:
+    
+    ```python
+    BASH_TIMEOUT = 30  # seconds
+    ```
+    
+    If a command exceeds the timeout:
+    
+    ```
+    Error: command timed out after 30s: sleep 60
+    ```
+    
+    #### Exit Codes
+    
+    The bash tool **does not raise an error** for non-zero exit codes. It simply returns the output:
+    
+    ```python
+    result = subprocess.run(
+        command, shell=True, capture_output=True, text=True, timeout=BASH_TIMEOUT,
+    )
+    # No check for result.returncode
+    ```
+    
+    This allows the LLM to see error messages (in stderr) and decide how to respond.
+    
+    <Note>
+      The bash tool runs commands with `shell=True`, which means it supports shell features like pipes (`|`), redirects (`>`), and command chaining (`&&`).
+    </Note>
+  </Tab>
+</Tabs>
+
+## Tool Execution Flow
+
+Here's what happens when the LLM requests a tool call:
+
+```python
+# If the LLM requested tool calls, execute them
+if message.tool_calls:
+    for tool_call in message.tool_calls:
+        fn = tool_call.function
+
+        try:
+            fn_args = json.loads(fn.arguments)
+            print(f"  [tool] {fn.name}({fn_args})", file=sys.stderr)
+            result = TOOLS[fn.name](**fn_args)
+        except (KeyError, json.JSONDecodeError, TypeError) as e:
+            result = f"Error: {type(e).__name__}: {e}"
+        except subprocess.TimeoutExpired as e:
+            result = f"Error: command timed out after {BASH_TIMEOUT}s"
+        except Exception as e:
+            result = f"Error executing {fn.name}: {e}"
+
+        messages.append(
+            {
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": result,
+            }
+        )
+```
+
+### Key Points
+
+1. **Multiple tool calls** — The LLM can request multiple tools in a single response. They're executed sequentially.
+
+2. **Logging** — Every tool call is logged to stderr:
+   ```
+   [tool] read({'file_path': 'README.md'})
+   ```
+
+3. **Error handling** — Errors are caught and returned as strings, not exceptions:
+   - `KeyError` → Unknown tool
+   - `JSONDecodeError` → Malformed arguments
+   - `TypeError` → Wrong argument types
+   - `TimeoutExpired` → Command timeout
+   - `Exception` → Any other error
+
+4. **Tool results** — The result is appended as a message with `role="tool"` and the original `tool_call_id`.
+
+## How the LLM Decides Which Tool to Call
+
+The LLM makes tool decisions based on:
+
+1. **Tool descriptions** — The `description` field in each tool definition
+2. **Parameter descriptions** — Hints about what each parameter does
+3. **Conversation context** — Previous tool calls and results
+4. **User intent** — The phrasing of the prompt
+
+### Example Decision Process
+
+**Prompt:** `"What's in main.py?"`
+
+1. LLM sees the `read` tool with description: _"Read and return the contents of a file"_
+2. Recognizes this matches the user's intent
+3. Calls `read(file_path="main.py")`
+
+**Prompt:** `"Add a docstring to main.py"`
+
+1. LLM needs to see the current contents first
+2. Calls `read(file_path="main.py")`
+3. Receives the file contents as a tool result
+4. Generates updated content with a docstring
+5. Calls `write(file_path="main.py", content="...")`
+
+**Prompt:** `"How many lines of code are in this project?"`
+
+1. LLM recognizes this requires shell commands
+2. Calls `bash(command="find . -name '*.py' | xargs wc -l")`
+3. Receives output and summarizes it for the user
+
+<Note>
+  The LLM doesn't have access to the Python function implementations — only the JSON schema definitions. It reasons purely from descriptions and parameter names.
+</Note>
+
+## Tool Result Feedback
+
+Tool results are critical to the agent loop. They provide the LLM with:
+
+- **Data** — File contents, command output, etc.
+- **Confirmation** — Success messages like `"Successfully wrote to file.py"`
+- **Error context** — What went wrong and why
+
+### Successful Tool Result
+
+```json
+{
+  "role": "tool",
+  "tool_call_id": "call_abc123",
+  "content": "def main():\n    print('Hello, World!')\n"
+}
+```
+
+The LLM can now reason about the file contents and respond to the user.
+
+### Error Tool Result
+
+```json
+{
+  "role": "tool",
+  "tool_call_id": "call_xyz789",
+  "content": "Error: FileNotFoundError: [Errno 2] No such file or directory: 'missing.py'"
+}
+```
+
+The LLM sees the error and can:
+- Inform the user the file doesn't exist
+- Suggest creating the file
+- Ask for clarification
+
+## Real-World Tool Usage Examples
+
+These examples come from the test suite (`test_marco_code.py`):
+
+<Accordion title="Example 1: Read a file and respond">
+  **User prompt:**
+  ```bash
+  marco-code -p "read data.txt"
+  ```
+  
+  **Agent loop execution:**
+  
+  1. **Iteration 1:** LLM calls `read(file_path="data.txt")`
+  2. Tool returns: `"file contents"`
+  3. **Iteration 2:** LLM responds: `"I read the file."`
+  
+  **Test code:**
+  ```python
+  def test_tool_call_then_stop(self, mock_get_client, capsys, tmp_path):
+      """LLM calls read tool, then responds with text."""
+      mock_client = MagicMock()
+      mock_get_client.return_value = mock_client
+
+      # Create a file for the read tool to find
+      test_file = tmp_path / "data.txt"
+      test_file.write_text("file contents")
+
+      # First response: tool call
+      tool_call = _make_tool_call("read", {"file_path": str(test_file)})
+      resp1 = MagicMock()
+      resp1.choices = [_make_choice(tool_calls=[tool_call], finish_reason="tool_calls")]
+
+      # Second response: text
+      resp2 = MagicMock()
+      resp2.choices = [_make_choice(content="I read the file.")]
+
+      mock_client.chat.completions.create.side_effect = [resp1, resp2]
+
+      with patch("sys.argv", ["marco-code", "-p", "read data.txt"]):
+          main()
+
+      captured = capsys.readouterr()
+      assert "I read the file." in captured.out
+  ```
+</Accordion>
+
+<Accordion title="Example 2: Unknown tool gracefully handled">
+  **Scenario:** LLM hallucinates a non-existent tool
+  
+  **Agent loop execution:**
+  
+  1. **Iteration 1:** LLM calls `nonexistent(x=1)`
+  2. marco-code catches `KeyError` and returns: `"Error: KeyError: 'nonexistent'"`
+  3. **Iteration 2:** LLM sees the error and responds: `"Sorry, that tool failed."`
+  
+  **Test code:**
+  ```python
+  def test_unknown_tool_returns_error(self, mock_get_client, capsys):
+      """LLM calls a non-existent tool — error returned as tool result, not crash."""
+      mock_client = MagicMock()
+      mock_get_client.return_value = mock_client
+
+      tool_call = _make_tool_call("nonexistent", {"x": 1})
+      resp1 = MagicMock()
+      resp1.choices = [_make_choice(tool_calls=[tool_call], finish_reason="tool_calls")]
+
+      resp2 = MagicMock()
+      resp2.choices = [_make_choice(content="Sorry, that tool failed.")]
+
+      mock_client.chat.completions.create.side_effect = [resp1, resp2]
+
+      with patch("sys.argv", ["marco-code", "-p", "do something"]):
+          main()
+
+      captured = capsys.readouterr()
+      assert "Sorry" in captured.out
+  ```
+</Accordion>
+
+<Accordion title="Example 3: Bash command with output">
+  **User prompt:**
+  ```bash
+  marco-code -p "list Python files"
+  ```
+  
+  **Agent loop execution:**
+  
+  1. **Iteration 1:** LLM calls `bash(command="ls *.py")`
+  2. Tool returns:
+     ```
+     marco_code.py
+     test_marco_code.py
+     setup.py
+     ```
+  3. **Iteration 2:** LLM responds with formatted list
+  
+  **Test code (simplified):**
+  ```python
+  def test_captures_stdout():
+      result = bash("echo hello")
+      assert "hello" in result
+  ```
+</Accordion>
+
+<Accordion title="Example 4: Command timeout">
+  **Scenario:** User requests a long-running command
+  
+  **Agent loop execution:**
+  
+  1. **Iteration 1:** LLM calls `bash(command="sleep 60")`
+  2. Tool times out after 30 seconds and returns: `"Error: command timed out after 30s: sleep 60"`
+  3. **Iteration 2:** LLM informs user the command was too slow
+  
+  **Test code:**
+  ```python
+  @patch("marco_code.BASH_TIMEOUT", 1)
+  def test_timeout_returns_error_message(self):
+      result = bash("sleep 10")
+      assert "timed out" in result
+      assert "sleep 10" in result
+  ```
+</Accordion>
+
+## Adding Custom Tools
+
+Extending marco-code with new tools is straightforward:
+
+<Steps>
+  <Step title="Define the Python function">
+    Create a function that takes parameters and returns a string result.
+    
+    ```python
+    def list_files(directory: str) -> str:
+        """List files in a directory."""
+        return "\n".join(os.listdir(directory))
+    ```
+  </Step>
+  
+  <Step title="Add to TOOLS dictionary">
+    Map the tool name to the function.
+    
+    ```python
+    TOOLS = {
+        "read": read,
+        "write": write,
+        "bash": bash,
+        "list_files": list_files,  # New tool
+    }
+    ```
+  </Step>
+  
+  <Step title="Add JSON schema definition">
+    Describe the tool for the LLM.
+    
+    ```python
+    TOOL_DEFINITIONS.append({
+        "type": "function",
+        "function": {
+            "name": "list_files",
+            "description": "List all files in a directory",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "directory": {
+                        "type": "string",
+                        "description": "The directory to list files from",
+                    }
+                },
+                "required": ["directory"],
+            },
+        },
+    })
+    ```
+  </Step>
+  
+  <Step title="Test it">
+    Run marco-code and verify the LLM can call your new tool.
+  </Step>
+</Steps>
+
+<Note>
+  Keep tool implementations **simple and focused**. Each tool should do one thing well and return a clear result string.
+</Note>
+
+## Design Philosophy
+
+marco-code's tool system follows these principles:
+
+1. **Minimal but sufficient** — Three tools cover 90% of coding assistant use cases
+2. **Fail-safe** — Errors are returned as strings, never crash the loop
+3. **Transparent** — All tool calls are logged for debugging
+4. **Extensible** — Adding new tools requires no framework or boilerplate
+5. **Stateless** — Tools don't share state or depend on each other
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Agent Loop" icon="rotate" href="/concepts/agent-loop">
+    See how tools fit into the larger agent loop pattern
+  </Card>
+  
+  <Card title="Tool APIs" icon="code" href="/api/tools/read">
+    Full API documentation for all functions and tools
+  </Card>
+</CardGroup>

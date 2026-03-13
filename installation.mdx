@@ -1,0 +1,210 @@
+---
+title: Installation
+description: Install marco-code and set up your environment
+---
+
+## Prerequisites
+
+Before installing marco-code, ensure you have:
+
+- **Python 3.10 or higher** installed on your system
+- An **OpenRouter API key** (for accessing LLM providers)
+- Basic familiarity with the command line
+
+<Tip>
+You can get a free OpenRouter API key at [openrouter.ai](https://openrouter.ai/). OpenRouter provides access to multiple LLM providers through a single API.
+</Tip>
+
+## Installation Methods
+
+<Tabs>
+  <Tab title="pip (Recommended)">
+    <Steps>
+      <Step title="Install with pip">
+        Install marco-code directly from PyPI:
+
+        ```bash
+        pip install marco-code
+        ```
+
+        This will install marco-code and its dependencies:
+        - `openai>=1.0` - OpenAI Python client (works with OpenRouter)
+        - `python-dotenv>=1.0` - Environment variable management
+      </Step>
+
+      <Step title="Verify installation">
+        Confirm marco-code is installed correctly:
+
+        ```bash
+        marco-code --help
+        ```
+
+        You should see:
+
+        ```
+        usage: marco-code [-h] -p P
+
+        A minimal LLM-powered coding assistant
+
+        options:
+          -h, --help  show this help message and exit
+          -p P        The prompt to send to the assistant
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="From Source">
+    <Steps>
+      <Step title="Clone the repository">
+        ```bash
+        git clone https://github.com/yourusername/marco-code.git
+        cd marco-code
+        ```
+      </Step>
+
+      <Step title="Install in development mode">
+        ```bash
+        pip install -e .
+        ```
+
+        This installs marco-code in editable mode, allowing you to modify the source code.
+      </Step>
+
+      <Step title="Optional: Install development dependencies">
+        If you want to run tests or contribute to marco-code:
+
+        ```bash
+        pip install -e ".[dev]"
+        ```
+
+        This includes:
+        - `pytest>=7.0` - For running the test suite
+      </Step>
+
+      <Step title="Verify installation">
+        ```bash
+        marco-code --help
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="pipx (Isolated)">
+    <Steps>
+      <Step title="Install pipx">
+        If you don't have pipx installed:
+
+        ```bash
+        python -m pip install pipx
+        python -m pipx ensurepath
+        ```
+      </Step>
+
+      <Step title="Install marco-code with pipx">
+        ```bash
+        pipx install marco-code
+        ```
+
+        This installs marco-code in an isolated environment, preventing dependency conflicts.
+      </Step>
+
+      <Step title="Verify installation">
+        ```bash
+        marco-code --help
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Configuration
+
+<Steps>
+  <Step title="Create a .env file">
+    In your project directory (or home directory for global use), create a `.env` file:
+
+    ```bash
+    touch .env
+    ```
+  </Step>
+
+  <Step title="Add your API key">
+    Add your OpenRouter credentials to the `.env` file:
+
+    ```bash
+    OPENROUTER_API_KEY=your-key-here
+    OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+    ```
+
+    <Note>
+    The `OPENROUTER_BASE_URL` is optional and defaults to `https://openrouter.ai/api/v1`. Only set it if you're using a custom endpoint.
+    </Note>
+  </Step>
+
+  <Step title="Secure your .env file">
+    Make sure your `.env` file is not committed to version control:
+
+    ```bash
+    echo ".env" >> .gitignore
+    ```
+  </Step>
+</Steps>
+
+## Verifying Your Setup
+
+Test that everything is configured correctly:
+
+```bash
+marco-code -p "echo 'Hello from marco-code!'"
+```
+
+If configured correctly, marco-code will:
+1. Read your `.env` file and load the API key
+2. Send your prompt to the LLM via OpenRouter
+3. Execute the bash command
+4. Return the output
+
+<Warning>
+If you see `RuntimeError: OPENROUTER_API_KEY is not set`, double-check that:
+- Your `.env` file exists in the current directory
+- The API key is correctly formatted
+- There are no extra spaces or quotes around the key
+</Warning>
+
+## Troubleshooting
+
+### Import Error
+
+If you get `ModuleNotFoundError: No module named 'marco_code'`:
+
+```bash
+# Reinstall with pip
+pip install --force-reinstall marco-code
+```
+
+### API Key Not Found
+
+If the API key isn't being loaded:
+
+1. Check the `.env` file is in your current working directory
+2. Verify the variable name is exactly `OPENROUTER_API_KEY`
+3. Try setting the environment variable directly:
+
+```bash
+export OPENROUTER_API_KEY=your-key-here
+marco-code -p "test"
+```
+
+### Permission Denied
+
+If you get permission errors during installation:
+
+```bash
+# Install for your user only
+pip install --user marco-code
+```
+
+## Next Steps
+
+Now that marco-code is installed, try the [quickstart guide](/quickstart) to run your first coding task.

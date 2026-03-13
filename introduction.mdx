@@ -1,0 +1,111 @@
+---
+title: Introduction
+description: Learn about marco-code, a minimal LLM-powered coding assistant that demonstrates the agent loop pattern
+---
+
+## What is marco-code?
+
+marco-code is a minimal LLM-powered coding assistant that helps you understand how AI coding agents work. It's an educational implementation that demonstrates the core "agent loop" pattern used by sophisticated AI coding assistants.
+
+At its core, marco-code is a command-line tool that takes your natural language prompt and uses an LLM to iteratively call tools until it has enough information to respond. The LLM can read files, write files, and execute shell commands—all the fundamental operations needed for a coding assistant.
+
+## The Agent Loop Pattern
+
+marco-code implements the fundamental agent loop pattern that powers modern AI coding assistants. Here's how it works:
+
+```
+User prompt (-p)
+       │
+       ▼
+┌─────────────┐
+│  messages[]  │◄──────────────────────────────┐
+│  (history)   │                               │
+└──────┬──────┘                               │
+       │                                       │
+       ▼                                       │
+┌─────────────┐    finish_reason="stop"       │
+│ call_model() ├──────────────────────► print() & exit
+│  (OpenRouter)│                               │
+└──────┬──────┘                               │
+       │ tool_calls?                           │
+       ▼                                       │
+┌─────────────┐    result string              │
+│ TOOLS[name] ├───────────────────────────────┘
+│ read/write/ │
+│ bash        │
+└─────────────┘
+```
+
+The LLM iteratively calls tools until it has enough information to respond. Each iteration, it either:
+1. Calls one or more tools (which are executed and results returned)
+2. Responds with text and stops (exits the loop)
+
+This pattern allows the AI to gather context, make changes, and verify results before responding—just like a human developer would.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Three Core Tools" icon="wrench">
+    Read files, write files, and execute bash commands—the essential operations for software engineering tasks
+  </Card>
+  
+  <Card title="Agent Loop" icon="repeat">
+    Demonstrates the iterative tool-calling pattern used by production AI coding assistants
+  </Card>
+  
+  <Card title="OpenAI-Compatible" icon="plug">
+    Works with any OpenAI-compatible API through OpenRouter, supporting multiple LLM providers
+  </Card>
+  
+  <Card title="Simple & Educational" icon="book">
+    Under 300 lines of well-commented Python code that's easy to understand and modify
+  </Card>
+</CardGroup>
+
+### Technical Details
+
+- **Safety limits**: Maximum 10 iterations and 30-second timeout for bash commands
+- **Error handling**: Graceful error messages when tools fail, timeout, or receive malformed input
+- **Context awareness**: Automatic system prompt with working directory and platform information
+- **JSON Schema tools**: Tools defined using standard OpenAI function calling format
+
+## When to Use marco-code
+
+marco-code is ideal for:
+
+- **Learning**: Understanding how AI coding agents work under the hood
+- **Prototyping**: Quickly testing LLM capabilities for coding tasks
+- **Education**: Teaching the agent loop pattern in workshops or courses
+- **Simple automation**: Basic file operations and code generation tasks
+
+<Note>
+marco-code is intentionally minimal for educational purposes. For production use cases, consider full-featured tools like OpenCode, Cursor, or Aider that include advanced features like semantic search, multi-file editing, and sophisticated context management.
+</Note>
+
+## Real-World Use Cases
+
+**Quick file operations**
+```bash
+marco-code -p "Read config.json and create a .env file with the database credentials"
+```
+
+**Code generation**
+```bash
+marco-code -p "Create a FastAPI endpoint for user authentication with JWT tokens"
+```
+
+**Testing and verification**
+```bash
+marco-code -p "Run the test suite and fix any failing tests in test_auth.py"
+```
+
+**Refactoring**
+```bash
+marco-code -p "Refactor utils.py to use type hints and add docstrings"
+```
+
+## What's Next?
+
+Ready to get started? Follow the [installation guide](/installation) to set up marco-code, then try the [quickstart](/quickstart) to run your first command.
+
+Want to understand how it works? Check out the [core concepts](/concepts/agent-loop) to learn about the agent loop, tools, and message history.

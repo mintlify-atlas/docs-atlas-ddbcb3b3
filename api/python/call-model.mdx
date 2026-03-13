@@ -1,0 +1,234 @@
+---
+title: 'call_model'
+description: 'Send requests to the LLM'
+---
+
+## Overview
+
+The `call_model` function sends a request to the LLM with conversation history and available tools, returning the model's response.
+
+## Function Signature
+
+Defined in `marco_code.py:65-82`:
+
+```python
+def call_model(messages, tools):
+    """
+    Send a request to the LLM with conversation history and available tools.
+
+    Args:
+        messages: List of conversation messages (user, assistant, tool results)
+        tools: List of tool definitions the LLM can choose to call
+
+    Returns:
+        The API response containing the LLM's reply (text and/or tool calls)
+    """
+    client = _get_client()
+    response = client.chat.completions.create(
+        model="anthropic/claude-haiku-4.5",
+        messages=messages,
+        tools=tools,
+    )
+    return response
+```
+
+## Parameters
+
+<ParamField path="messages" type="list" required>
+  List of conversation messages. Each message is a dictionary with `role` and `content` keys.
+  
+  **Message roles:**
+  - `"system"`: System prompt with context
+  - `"user"`: User's request or question
+  - `"assistant"`: LLM's response (text or tool calls)
+  - `"tool"`: Tool execution results
+</ParamField>
+
+<ParamField path="tools" type="list" required>
+  List of tool definitions following OpenAI's function calling format. Each tool is a dictionary with JSON Schema describing the function signature.
+</ParamField>
+
+## Returns
+
+<ResponseField name="response" type="ChatCompletion">
+  The API response from OpenAI-compatible endpoint. Contains:
+  - `choices[0].message`: The LLM's response message
+  - `choices[0].message.content`: Text content (if any)
+  - `choices[0].message.tool_calls`: Tool calls (if any)
+  - `choices[0].finish_reason`: Why the model stopped (`"stop"`, `"tool_calls"`, etc.)
+</ResponseField>
+
+## OpenAI Client Usage
+
+The function uses a lazy-initialized OpenAI client (`marco_code.py:55-62`):
+
+```python
+_client = None
+
+def _get_client():
+    """Return the shared OpenAI client, creating it on first use."""
+    global _client
+    if _client is None:
+        if not API_KEY:
+            raise RuntimeError("OPENROUTER_API_KEY is not set")
+        _client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+    return _client
+```
+
+Configuration comes from environment variables (`marco_code.py:45-46`):
+
+```python
+API_KEY = os.getenv("OPENROUTER_API_KEY")
+BASE_URL = os.getenv("OPENROUTER_BASE_URL", default="https://openrouter.ai/api/v1")
+```
+
+## Examples
+
+### Basic Usage
+
+```python
+from marco_code import call_model, TOOL_DEFINITIONS
+
+messages = [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "What's 2+2?"}
+]
+
+response = call_model(messages, TOOL_DEFINITIONS)
+print(response.choices[0].message.content)
+```
+
+### With Tool Calls
+
+```python
+messages = [
+    {"role": "system", "content": "You are a coding assistant."},
+    {"role": "user", "content": "Read config.json and summarize it"}
+]
+
+response = call_model(messages, TOOL_DEFINITIONS)
+
+# Check if model wants to call tools
+if response.choices[0].message.tool_calls:
+    for tool_call in response.choices[0].message.tool_calls:
+        print(f"Tool: {tool_call.function.name}")
+        print(f"Args: {tool_call.function.arguments}")
+```
+
+### Full Conversation Loop
+
+```python
+import json
+from marco_code import call_model, TOOL_DEFINITIONS, TOOLS
+
+messages = [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "Count lines in main.py"}
+]
+
+for _ in range(5):  # Max 5 iterations
+    response = call_model(messages, TOOL_DEFINITIONS)
+    message = response.choices[0].message
+    messages.append(message)
+    
+    # Execute tool calls
+    if message.tool_calls:
+        for tool_call in message.tool_calls:
+            fn = tool_call.function
+            fn_args = json.loads(fn.arguments)
+            result = TOOLS[fn.name](**fn_args)
+            
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": result
+            })
+    
+    # Exit when done
+    if response.choices[0].finish_reason == "stop":
+        print(message.content)
+        break
+```
+
+### Custom System Prompt
+
+```python
+import os
+import platform
+
+system_prompt = (
+    f"You are a coding assistant.\n"
+    f"Working directory: {os.getcwd()}\n"
+    f"Platform: {platform.system()}"
+)
+
+messages = [
+    {"role": "system", "content": system_prompt},
+    {"role": "user", "content": "List files in current directory"}
+]
+
+response = call_model(messages, TOOL_DEFINITIONS)
+```
+
+## Message Structure
+
+### User Message
+
+```python
+{"role": "user", "content": "Read README.md"}
+```
+
+### Assistant Message (with tool calls)
+
+```python
+{
+    "role": "assistant",
+    "content": None,
+    "tool_calls": [
+        {
+            "id": "call_123",
+            "type": "function",
+            "function": {
+                "name": "read",
+                "arguments": '{"file_path": "README.md"}'
+            }
+        }
+    ]
+}
+```
+
+### Tool Result Message
+
+```python
+{
+    "role": "tool",
+    "tool_call_id": "call_123",
+    "content": "# README\nThis is the readme content..."
+}
+```
+
+## Model Configuration
+
+The function uses Claude Haiku 4.5 via OpenRouter (`marco_code.py:78`):
+
+```python
+model="anthropic/claude-haiku-4.5"
+```
+
+To use a different model, modify this line or make it configurable:
+
+```python
+def call_model(messages, tools, model="anthropic/claude-haiku-4.5"):
+    response = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        tools=tools,
+    )
+    return response
+```
+
+## See Also
+
+- [main](/api/python/main) - The complete agent loop implementation
+- [CLI](/api/cli) - Command-line interface
+- [Configuration](/configuration/environment-variables) - Environment variables

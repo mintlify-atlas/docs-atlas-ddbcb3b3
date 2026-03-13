@@ -1,0 +1,102 @@
+---
+title: 'Command Line'
+description: 'Using marco-code from the terminal'
+---
+
+## Overview
+
+The `marco-code` command provides a command-line interface to the LLM-powered coding assistant.
+
+## Installation
+
+The CLI is registered via the `[project.scripts]` section in `pyproject.toml:12`:
+
+```toml
+[project.scripts]
+marco-code = "marco_code:main"
+```
+
+After installing the package, the `marco-code` command will be available in your PATH.
+
+## Command Signature
+
+```bash
+marco-code -p "<prompt>"
+```
+
+## Arguments
+
+The argument parser is configured in `marco_code.py:197-202`:
+
+```python
+p = argparse.ArgumentParser(
+    prog="marco-code",
+    description="A minimal LLM-powered coding assistant",
+)
+p.add_argument("-p", required=True, help="The prompt to send to the assistant")
+```
+
+### `-p` (required)
+
+The prompt to send to the assistant. This is the task or question you want the AI to help with.
+
+**Type:** string  
+**Required:** Yes
+
+## Usage Examples
+
+### Basic File Reading
+
+```bash
+marco-code -p "Read README.md and summarize it"
+```
+
+### File Creation
+
+```bash
+marco-code -p "Create a Python script called hello.py that prints 'Hello, World!'"
+```
+
+### Code Analysis
+
+```bash
+marco-code -p "Find all Python files in the src/ directory and count the lines of code"
+```
+
+### Debugging
+
+```bash
+marco-code -p "Run pytest and fix any failing tests"
+```
+
+## Exit Behavior
+
+The agent loop runs for a maximum of `MAX_ITERATIONS = 10` iterations (`marco_code.py:51`). The command exits when:
+
+1. The LLM returns `finish_reason="stop"` (task completed)
+2. Maximum iterations are reached (warning printed to stderr)
+
+When the LLM completes its work, the final response is printed to stdout (`marco_code.py:260-264`):
+
+```python
+final_content = chat.choices[0].message.content
+if final_content:
+    print(final_content)
+else:
+    print("Stopped: reached maximum iterations without a final response.")
+```
+
+## Tool Execution Logging
+
+Tool calls are logged to stderr during execution:
+
+```
+[tool] read({'file_path': 'README.md'})
+[tool] write({'file_path': 'output.txt', 'content': '...'})
+```
+
+This allows you to track what the assistant is doing while keeping stdout clean for the final response.
+
+## Environment Variables
+
+See [Configuration](/configuration/environment-variables) for required environment variables.

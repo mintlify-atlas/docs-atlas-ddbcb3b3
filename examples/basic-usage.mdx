@@ -1,0 +1,109 @@
+---
+title: Basic Usage
+description: Simple real-world examples to get started with marco-code
+---
+
+marco-code excels at common development tasks. Here are practical examples showing how the agent loop works behind the scenes.
+
+## Read a File and Summarize It
+
+Ask marco-code to read and analyze a file:
+
+```bash
+marco-code -p "Read README.md and give me a one-sentence summary"
+```
+
+**What happens:**
+1. The LLM calls `read(file_path="README.md")`
+2. Gets the file contents as a tool result
+3. Analyzes the text and responds with a summary
+
+**Example output:**
+```
+  [tool] read({'file_path': 'README.md'})
+This README describes a minimal LLM-powered coding assistant that demonstrates the agent loop pattern.
+```
+
+<Note>
+Tool calls are logged to stderr (prefixed with `[tool]`) so you can see what's happening behind the scenes.
+</Note>
+
+## Check If Tests Are Passing
+
+Run your test suite and get an analysis:
+
+```bash
+marco-code -p "Run pytest and tell me if all tests pass"
+```
+
+**What happens:**
+1. The LLM calls `bash(command="pytest")`
+2. Receives stdout/stderr from the command
+3. Parses the output and reports results
+
+**Example interaction:**
+```
+  [tool] bash({'command': 'pytest'})
+  [tool] read({'file_path': 'test_marco_code.py'})
+All tests passed! Found 12 test cases covering the read, write, and bash tools, plus agent loop behavior.
+```
+
+<Tip>
+The LLM might call multiple tools (like reading test files) to give you better context about failures.
+</Tip>
+
+## Find All TODO Comments in a Project
+
+Search across your codebase:
+
+```bash
+marco-code -p "Find all TODO comments in Python files and list them"
+```
+
+**What happens:**
+1. The LLM calls `bash(command="grep -r 'TODO' *.py")`
+2. Parses the grep output
+3. Formats the results for readability
+
+**Example output:**
+```
+  [tool] bash({'command': "grep -rn 'TODO' --include='*.py' ."})
+Found 3 TODO comments:
+- marco_code.py:145: TODO: Add support for glob patterns
+- test_marco_code.py:89: TODO: Test with binary files
+- setup.py:12: TODO: Add optional dependencies
+```
+
+## Understanding the Agent Loop
+
+All these examples follow the same pattern:
+
+1. **User prompt** → Added to conversation history
+2. **LLM response** → Tool calls or final text
+3. **Tool execution** → Results added to history
+4. **Loop continues** → Until `finish_reason="stop"`
+
+The LLM has access to three core tools:
+- **`read(file_path)`** - Read file contents (marco_code.py:91)
+- **`write(file_path, content)`** - Write files with directory creation (marco_code.py:97)
+- **`bash(command)`** - Execute shell commands with 30s timeout (marco_code.py:105)
+
+<Note>
+The agent loop has a maximum of 10 iterations (MAX_ITERATIONS) to prevent infinite loops.
+</Note>
+
+## Chaining Multiple Operations
+
+marco-code can perform complex multi-step tasks:
+
+```bash
+marco-code -p "Check git status, read any modified Python files, and summarize what changed"
+```
+
+**Expected tool sequence:**
+1. `bash(command="git status")`
+2. `read(file_path="src/main.py")` (if modified)
+3. `bash(command="git diff src/main.py")`
+4. Final summary response
+
+The LLM decides which tools to call and in what order based on your prompt and previous results.
