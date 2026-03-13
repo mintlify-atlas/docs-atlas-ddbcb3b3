@@ -1,0 +1,95 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "marco-code",
+  "projectDescription": "A minimal LLM-powered coding assistant demonstrating the core agent loop pattern",
+  "theme": "aspen",
+  "primaryColor": "#6366f1",
+  "lightColor": "#818cf8",
+  "darkColor": "#4f46e5",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/agent-loop",
+              "concepts/tools"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/environment-variables"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "examples/basic-usage",
+              "examples/file-operations",
+              "examples/shell-commands"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/error-handling",
+              "advanced/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Command Line",
+            "pages": [
+              "api/cli"
+            ]
+          },
+          {
+            "group": "Tools",
+            "pages": [
+              "api/tools/read",
+              "api/tools/write",
+              "api/tools/bash"
+            ]
+          },
+          {
+            "group": "Python API",
+            "pages": [
+              "api/python/call-model",
+              "api/python/main"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Iterative agent loop pattern for LLM interactions",
+    "Built-in file read/write and shell execution tools",
+    "OpenRouter API integration with OpenAI-compatible interface",
+    "Automatic tool execution with result feedback",
+    "Robust error handling and timeout management"
+  ],
+  "publicApiSurface": [
+    "marco-code -p \"<prompt>\" (CLI command)",
+    "read(file_path: str) -> str",
+    "write(file_path: str, content: str) -> str",
+    "bash(command: str) -> str",
+    "call_model(messages, tools)",
+    "main()"
+  ]
+}
